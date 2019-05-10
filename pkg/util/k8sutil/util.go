@@ -29,15 +29,15 @@ import (
 
 const (
 	// LabelKeyArangoDeployment is the key of the label used to store the ArangoDeployment name in
-	LabelKeyArangoDeployment = "arango_deployment"
+	LabelKeyArangoDeployment = "arango-deployment"
 	// LabelKeyArangoLocalStorage is the key of the label used to store the ArangoLocalStorage name in
-	LabelKeyArangoLocalStorage = "arango_local_storage"
+	LabelKeyArangoLocalStorage = "arango-local-storage"
 	// LabelKeyApp is the key of the label used to store the application name in (fixed to AppName)
 	LabelKeyApp = "app"
 	// LabelKeyRole is the key of the label used to store the role of the resource in
 	LabelKeyRole = "role"
 	// LabelKeyArangoExporter is the key of the label used to indicate that a exporter is present
-	LabelKeyArangoExporter = "arango_exporter"
+	LabelKeyArangoExporter = "arango-exporter"
 
 	// AppName is the fixed value for the "app" label
 	AppName = "arangodb"
