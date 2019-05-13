@@ -582,7 +582,7 @@ func CreateArangodPod(kubecli kubernetes.Interface, developmentMode bool, deploy
 			c.VolumeMounts = append(c.VolumeMounts, tlsKeyfileVolumeMounts()...)
 		}
 		p.Spec.Containers = append(p.Spec.Containers, c)
-		p.Labels[LabelKeyArangoExporter] = "active"
+		p.Labels[LabelKeyArangoExporter] = "yes"
 	}
 
 	// Add sidecars
