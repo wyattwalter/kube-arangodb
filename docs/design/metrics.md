@@ -1,12 +1,21 @@
 # Metrics
 
-TODO:
+## Prometheus integration
 
-- Investigate prometheus annotations wrt metrics
-    - see https://github.com/prometheus/prometheus/blob/master/documentation/examples/prometheus-kubernetes.yml
-    - `prometheus.io/scrape`: Only scrape services that have a value of `true`
-    - `prometheus.io/scheme`: If the metrics endpoint is secured then you will need
-    - `prometheus.io/path`: If the metrics path is not `/metrics` override this.
-    - `prometheus.io/port`: If the metrics are exposed on a different port to the
+### ArangoDeployment configuration
 
-- Add prometheus compatible `/metrics` endpoint to `arangod`
+To be able to scrape metrics from ArangoDB Pods managed by Operator, we need to enable monitoring features designed for ArangoDeployment:
+
+```yaml
+spec:
+  ...
+  annotations:
+    prometheus.io/scrape: 'true'
+    prometheus.io/port: '9101'
+  ...
+  metrics:
+    enabled: true
+    tls: false
+    mode: sidecar
+    image: arangodb/arangodb-exporter:0.1.7
+```
