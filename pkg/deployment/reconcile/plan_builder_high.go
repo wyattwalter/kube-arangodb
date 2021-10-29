@@ -25,6 +25,8 @@ package reconcile
 import (
 	"context"
 
+	"github.com/arangodb/kube-arangodb/pkg/deployment/client"
+
 	"github.com/arangodb/kube-arangodb/pkg/deployment/rotation"
 
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
@@ -89,6 +91,7 @@ func createHighPlan(ctx context.Context, log zerolog.Logger, apiObject k8sutil.A
 		ApplyIfEmpty(createCleanOutPlan).
 		ApplyIfEmpty(updateMemberUpdateConditionsPlan).
 		ApplyIfEmpty(updateMemberRotationConditionsPlan).
+		ApplyIfEmpty(updateClusterLicense).
 		ApplyIfEmpty(createTopologyMemberConditionPlan).
 		Plan(), true
 }
@@ -216,6 +219,57 @@ func updateMemberRotationConditionsPlan(ctx context.Context,
 	}
 
 	return plan
+}
+
+func updateClusterLicense(ctx context.Context,
+	log zerolog.Logger, apiObject k8sutil.APIObject,
+	spec api.DeploymentSpec, status api.DeploymentStatus,
+	cachedStatus inspectorInterface.Inspector, context PlanBuilderContext) api.Plan {
+	if !spec.IsAuthenticated() {
+		return nil
+	}
+
+	l, ok := k8sutil.GetLicenseFromSecret(context.GetCachedStatus(), spec.Authentication.GetJWTSecretName())
+	if !ok {
+		return nil
+	}
+
+	if !l.V2.IsV2Set() {
+		return nil
+	}
+
+	members := status.Members.AsListInGroups(api.ServerGroupSingle, api.ServerGroupDBServers, api.ServerGroupCoordinators).Filter(func(a api.DeploymentStatusMemberElement) bool {
+		i := a.Member.Image
+		if i == nil {
+			return false
+		}
+
+		return i.ArangoDBVersion.CompareTo("3.9.0") >= 0
+	})
+
+	if len(members) == 0 {
+		// No member found to take this action
+		return nil
+	}
+
+	member := members[0]
+
+	c, err := context.GetServerClient(ctx, member.Group, member.Member.ID)
+	if err != nil {
+		log.Err(err).Msgf("Unable to get client")
+		return nil
+	}
+
+	internalClient := client.NewClient(c.Connection())
+
+	if ok, err := licenseV2Compare(ctx, log, internalClient, l.V2); err != nil {
+		log.Error().Err(err).Msg("Unable to verify license")
+		return nil
+	} else if ok {
+		return nil
+	}
+
+	return api.Plan{api.NewAction(api.ActionTypeLicenseSet, member.Group, member.Member.ID)}
 }
 
 func updateMemberRotationConditions(log zerolog.Logger, apiObject k8sutil.APIObject, spec api.DeploymentSpec, cachedStatus inspectorInterface.Inspector, member api.MemberStatus, group api.ServerGroup, p *core.Pod) (api.Plan, error) {

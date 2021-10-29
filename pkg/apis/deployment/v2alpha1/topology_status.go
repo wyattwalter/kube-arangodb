@@ -37,14 +37,29 @@ type TopologyStatus struct {
 	Label string `json:"label,omitempty"`
 }
 
-func (t *TopologyStatus) GetLeastUsedZone(group ServerGroup) int {
-	if t == nil {
+func (in *TopologyStatus) Equal(b *TopologyStatus) bool {
+	if in == nil && b == nil {
+		return true
+	}
+
+	if in == nil || b == nil {
+		return false
+	}
+
+	return in.ID == b.ID &&
+		in.Size == b.Size &&
+		in.Label == b.Label &&
+		in.Zones.Equal(b.Zones)
+}
+
+func (in *TopologyStatus) GetLeastUsedZone(group ServerGroup) int {
+	if in == nil {
 		return -1
 	}
 
 	r, m := -1, math.MaxInt64
 
-	for i, z := range t.Zones {
+	for i, z := range in.Zones {
 		if n, ok := z.Members[group.AsRoleAbbreviated()]; ok {
 			if v := len(n); v < m {
 				r, m = i, v
@@ -59,30 +74,30 @@ func (t *TopologyStatus) GetLeastUsedZone(group ServerGroup) int {
 	return r
 }
 
-func (t *TopologyStatus) RegisterTopologyLabel(zone int, label string) bool {
-	if t == nil {
+func (in *TopologyStatus) RegisterTopologyLabel(zone int, label string) bool {
+	if in == nil {
 		return false
 	}
 
-	if zone < 0 || zone >= t.Size {
+	if zone < 0 || zone >= in.Size {
 		return false
 	}
 
-	if t.Zones[zone].Labels.Contains(label) {
+	if in.Zones[zone].Labels.Contains(label) {
 		return false
 	}
 
-	t.Zones[zone].Labels = t.Zones[zone].Labels.Add(label).Sort()
+	in.Zones[zone].Labels = in.Zones[zone].Labels.Add(label).Sort()
 
 	return true
 }
 
-func (t *TopologyStatus) RemoveMember(group ServerGroup, id string) bool {
-	if t == nil {
+func (in *TopologyStatus) RemoveMember(group ServerGroup, id string) bool {
+	if in == nil {
 		return false
 	}
 
-	for _, zone := range t.Zones {
+	for _, zone := range in.Zones {
 		if zone.RemoveMember(group, id) {
 			return true
 		}
@@ -91,8 +106,8 @@ func (t *TopologyStatus) RemoveMember(group ServerGroup, id string) bool {
 	return false
 }
 
-func (t *TopologyStatus) IsTopologyOwned(m *TopologyMemberStatus) bool {
-	if t == nil {
+func (in *TopologyStatus) IsTopologyOwned(m *TopologyMemberStatus) bool {
+	if in == nil {
 		return false
 	}
 
@@ -100,16 +115,48 @@ func (t *TopologyStatus) IsTopologyOwned(m *TopologyMemberStatus) bool {
 		return false
 	}
 
-	return t.ID == m.ID
+	return in.ID == m.ID
 }
 
-func (t *TopologyStatus) Enabled() bool {
-	return t != nil
+func (in *TopologyStatus) Enabled() bool {
+	return in != nil
 }
 
 type TopologyStatusZones []TopologyStatusZone
 
+func (in TopologyStatusZones) Equal(b TopologyStatusZones) bool {
+	if len(in) != len(b) {
+		return false
+	}
+
+	for i := range in {
+		if !in[i].Equal(b[i]) {
+			return false
+		}
+	}
+
+	return true
+}
+
 type TopologyStatusZoneMembers map[string]List
+
+func (in TopologyStatusZoneMembers) Equal(b TopologyStatusZoneMembers) bool {
+	if len(in) != len(b) {
+		return false
+	}
+
+	for i, av := range in {
+		if bv, ok := b[i]; !ok {
+			return false
+		} else {
+			if !av.Equal(bv) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
 
 type TopologyStatusZone struct {
 	ID int `json:"id"`
@@ -119,34 +166,38 @@ type TopologyStatusZone struct {
 	Members TopologyStatusZoneMembers `json:"members,omitempty"`
 }
 
-func (t *TopologyStatusZone) AddMember(group ServerGroup, id string) {
-	if t.Members == nil {
-		t.Members = TopologyStatusZoneMembers{}
-	}
-
-	t.Members[group.AsRoleAbbreviated()] = t.Members[group.AsRoleAbbreviated()].Add(id).Sort()
+func (in TopologyStatusZone) Equal(b TopologyStatusZone) bool {
+	return in.ID == b.ID && in.Labels.Equal(b.Labels) && in.Members.Equal(b.Members)
 }
 
-func (t *TopologyStatusZone) RemoveMember(group ServerGroup, id string) bool {
-	if t == nil {
+func (in *TopologyStatusZone) AddMember(group ServerGroup, id string) {
+	if in.Members == nil {
+		in.Members = TopologyStatusZoneMembers{}
+	}
+
+	in.Members[group.AsRoleAbbreviated()] = in.Members[group.AsRoleAbbreviated()].Add(id).Sort()
+}
+
+func (in *TopologyStatusZone) RemoveMember(group ServerGroup, id string) bool {
+	if in == nil {
 		return false
 	}
-	if t.Members == nil {
+	if in.Members == nil {
 		return false
 	}
-	if !t.Members[group.AsRoleAbbreviated()].Contains(id) {
+	if !in.Members[group.AsRoleAbbreviated()].Contains(id) {
 		return false
 	}
-	t.Members[group.AsRoleAbbreviated()] = t.Members[group.AsRoleAbbreviated()].Remove(id)
+	in.Members[group.AsRoleAbbreviated()] = in.Members[group.AsRoleAbbreviated()].Remove(id)
 	return true
 }
 
-func (t *TopologyStatusZone) Get(group ServerGroup) List {
-	if t == nil {
+func (in *TopologyStatusZone) Get(group ServerGroup) List {
+	if in == nil {
 		return nil
 	}
 
-	if v, ok := t.Members[group.AsRoleAbbreviated()]; ok {
+	if v, ok := in.Members[group.AsRoleAbbreviated()]; ok {
 		return v
 	} else {
 		return nil

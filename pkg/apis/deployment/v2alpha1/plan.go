@@ -167,6 +167,8 @@ const (
 	ActionTypeArangoMemberUpdatePodSpec ActionType = "ArangoMemberUpdatePodSpec"
 	// ActionTypeArangoMemberUpdatePodStatus updates pod spec
 	ActionTypeArangoMemberUpdatePodStatus ActionType = "ArangoMemberUpdatePodStatus"
+	// ActionTypeLicenseSet sets server license
+	ActionTypeLicenseSet ActionType = "LicenseSet"
 
 	// Runtime Updates
 	// ActionTypeRuntimeContainerImageUpdate updates container image in runtime

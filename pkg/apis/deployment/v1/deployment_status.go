@@ -83,6 +83,9 @@ type DeploymentStatus struct {
 	Agency *DeploymentStatusAgencyInfo `json:"agency,omitempty"`
 
 	Topology *TopologyStatus `json:"topology,omitempty"`
+
+	// License keeps information about current license
+	License *DeploymentStatusLicense `json:"license,omitempty"`
 }
 
 // Equal checks for equality
@@ -101,7 +104,9 @@ func (ds *DeploymentStatus) Equal(other DeploymentStatus) bool {
 		ds.Plan.Equal(other.Plan) &&
 		ds.AcceptedSpec.Equal(other.AcceptedSpec) &&
 		ds.SecretHashes.Equal(other.SecretHashes) &&
-		ds.Agency.Equal(other.Agency)
+		ds.Agency.Equal(other.Agency) &&
+		ds.Topology.Equal(other.Topology) &&
+		ds.License.Equal(other.License)
 }
 
 // IsForceReload returns true if ForceStatusReload is set to true
