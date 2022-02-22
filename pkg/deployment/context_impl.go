@@ -25,7 +25,6 @@ import (
 	"crypto/tls"
 	"net"
 	nhttp "net/http"
-	"strconv"
 	"time"
 
 	"github.com/arangodb/kube-arangodb/pkg/util/globals"
@@ -66,8 +65,6 @@ import (
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/arangodb/arangosync-client/client"
-	"github.com/arangodb/arangosync-client/tasks"
 	driver "github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/agency"
 	"github.com/rs/zerolog/log"
@@ -349,40 +346,6 @@ func (d *Deployment) getJWTToken() (string, bool) {
 	}
 
 	return string(jwt), true
-}
-
-// GetSyncServerClient returns a cached client for a specific arangosync server.
-func (d *Deployment) GetSyncServerClient(ctx context.Context, group api.ServerGroup, id string) (client.API, error) {
-	// Fetch monitoring token
-	log := d.deps.Log
-	secretName := d.apiObject.Spec.Sync.Monitoring.GetTokenSecretName()
-	monitoringToken, err := k8sutil.GetTokenSecret(ctx, d.GetCachedStatus().SecretReadInterface(), secretName)
-	if err != nil {
-		log.Debug().Err(err).Str("secret-name", secretName).Msg("Failed to get sync monitoring secret")
-		return nil, errors.WithStack(err)
-	}
-
-	// Fetch server DNS name
-	dnsName := k8sutil.CreatePodDNSNameWithDomain(d.apiObject, d.apiObject.Spec.ClusterDomain, group.AsRole(), id)
-
-	// Build client
-	port := k8sutil.ArangoSyncMasterPort
-	if group == api.ServerGroupSyncWorkers {
-		port = k8sutil.ArangoSyncWorkerPort
-	}
-	source := client.Endpoint{"https://" + net.JoinHostPort(dnsName, strconv.Itoa(port))}
-	tlsAuth := tasks.TLSAuthentication{
-		TLSClientAuthentication: tasks.TLSClientAuthentication{
-			ClientToken: monitoringToken,
-		},
-	}
-	auth := client.NewAuthentication(tlsAuth, "")
-	insecureSkipVerify := true
-	c, err := d.syncClientCache.GetClient(d.deps.Log, source, auth, insecureSkipVerify)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
 }
 
 // CreateMember adds a new member to the given group.

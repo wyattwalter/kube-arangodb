@@ -38,7 +38,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 
-	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/go-driver/agency"
 
 	"github.com/arangodb/go-driver"
@@ -300,10 +299,6 @@ func (c *testContext) GetServerClient(ctx context.Context, group api.ServerGroup
 }
 
 func (c *testContext) GetAgency(ctx context.Context) (agency.Agency, error) {
-	panic("implement me")
-}
-
-func (c *testContext) GetSyncServerClient(ctx context.Context, group api.ServerGroup, id string) (client.API, error) {
 	panic("implement me")
 }
 

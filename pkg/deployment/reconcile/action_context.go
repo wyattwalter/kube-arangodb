@@ -28,7 +28,6 @@ import (
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/go-driver/agency"
 
 	"github.com/arangodb/go-driver"
@@ -334,15 +333,6 @@ func (ac *actionContext) GetAgency(ctx context.Context) (agency.Agency, error) {
 		return nil, errors.WithStack(err)
 	}
 	return a, nil
-}
-
-// GetSyncServerClient returns a cached client for a specific arangosync server.
-func (ac *actionContext) GetSyncServerClient(ctx context.Context, group api.ServerGroup, id string) (client.API, error) {
-	c, err := ac.context.GetSyncServerClient(ctx, group, id)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
 }
 
 // GetMemberStatusByID returns the current member status

@@ -24,11 +24,11 @@ replace (
 
 require (
 	github.com/arangodb-helper/go-certificates v0.0.0-20180821055445-9fca24fc2680
-	github.com/arangodb/arangosync-client v0.7.0
 	github.com/arangodb/go-driver v1.2.1
 	github.com/arangodb/go-driver/v2 v2.0.0-20211021031401-d92dcd5a4c83
 	github.com/arangodb/go-upgrade-rules v0.0.0-20180809110947-031b4774ff21
 	//github.com/arangodb/rebalancer v0.1.1
+	//github.com/arangodb/arangosync v0.0.0-20220221145631-16ee8c47e3e6
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/dchest/uniuri v0.0.0-20160212164326-8902c56451e9
 	github.com/ghodss/yaml v1.0.0
@@ -69,7 +69,6 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/google/addlicense v0.0.0-20210428195630-6d92264d7170 // indirect
 	github.com/google/go-cmp v0.5.5 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/google/uuid v1.1.2 // indirect
@@ -77,8 +76,6 @@ require (
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/jessevdk/go-assets-builder v0.0.0-20130903091706-b8483521738f // indirect
-	github.com/jessevdk/go-flags v1.5.0 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.13 // indirect
@@ -98,7 +95,6 @@ require (
 	golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1 // indirect
 	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect

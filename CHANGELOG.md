@@ -13,6 +13,7 @@
 - (Bugfix) Fix 3.6 -> 3.7 Upgrade procedure
 - (Bugfix) Add missing finalizer
 - (Bugfix) Add graceful to kill command
+- Use `arangosync/client` pkg instead of outdated `arangosync-client`
 
 ## [1.2.7](https://github.com/arangodb/kube-arangodb/tree/1.2.7) (2022-01-17)
 - Add Plan BackOff functionality

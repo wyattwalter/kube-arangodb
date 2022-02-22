@@ -23,7 +23,6 @@ package reconciler
 import (
 	"context"
 
-	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/agency"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
@@ -184,11 +183,6 @@ type DeploymentDatabaseClient interface {
 type DeploymentMemberClient interface {
 	// GetServerClient returns a cached client for a specific server.
 	GetServerClient(ctx context.Context, group api.ServerGroup, id string) (driver.Client, error)
-}
-
-type DeploymentSyncClient interface {
-	// GetSyncServerClient returns a cached client for a specific arangosync server.
-	GetSyncServerClient(ctx context.Context, group api.ServerGroup, id string) (client.API, error)
 }
 
 type KubernetesEventGenerator interface {

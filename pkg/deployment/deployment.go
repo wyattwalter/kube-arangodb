@@ -49,7 +49,6 @@ import (
 
 	"github.com/arangodb/kube-arangodb/pkg/util/arangod"
 
-	"github.com/arangodb/arangosync-client/client"
 	"github.com/rs/zerolog"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -141,9 +140,9 @@ type Deployment struct {
 	resilience                *resilience.Resilience
 	resources                 *resources.Resources
 	chaosMonkey               *chaos.Monkey
-	syncClientCache           client.ClientCache
 	haveServiceMonitorCRD     bool
 
+	syncClientManager
 	memberState.StateInspector
 }
 
