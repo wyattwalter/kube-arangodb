@@ -21,6 +21,7 @@
 package v1
 
 import (
+	"math/rand"
 	"sort"
 	"sync"
 )
@@ -74,6 +75,14 @@ func (d DeploymentStatusMemberElements) Sort(less DeploymentStatusMemberElements
 	})
 
 	return n
+}
+
+func (d DeploymentStatusMemberElements) Any() (DeploymentStatusMemberElement, bool) {
+	if len(d) == 0 {
+		return DeploymentStatusMemberElement{}, false
+	}
+
+	return d[rand.Intn(len(d))], true
 }
 
 // DeploymentStatusMemberElement holds one specific element with group and member status

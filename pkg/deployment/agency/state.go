@@ -26,15 +26,12 @@ import (
 	"net/http"
 
 	"github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	"github.com/arangodb/kube-arangodb/pkg/util"
 	"github.com/arangodb/kube-arangodb/pkg/util/errors"
 )
 
-func loadState(ctx context.Context, client agency.Agency) (State, error) {
-	conn := client.Connection()
-
-	req, err := client.Connection().NewRequest(http.MethodPost, "/_api/agency/read")
+func loadState(ctx context.Context, conn driver.Connection) (State, error) {
+	req, err := conn.NewRequest(http.MethodPost, "/_api/agency/read")
 	if err != nil {
 		return State{}, err
 	}

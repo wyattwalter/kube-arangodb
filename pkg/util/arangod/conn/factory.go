@@ -22,20 +22,19 @@
 package conn
 
 import (
+	goHttp "net/http"
+
 	"github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	"github.com/arangodb/go-driver/http"
 )
 
 type Auth func() (driver.Authentication, error)
-type Config func() (http.ConnectionConfig, error)
+type Config func() *goHttp.Transport
 
 type Factory interface {
-	Connection(hosts ...string) (driver.Connection, error)
-	AgencyConnection(hosts ...string) (driver.Connection, error)
+	HTTPClient(mods ...func(cfg *goHttp.Transport)) *goHttp.Client
 
-	Client(hosts ...string) (driver.Client, error)
-	Agency(hosts ...string) (agency.Agency, error)
+	Connection(hosts ...string) (driver.Connection, error)
 
 	GetAuth() Auth
 }
@@ -52,91 +51,37 @@ type factory struct {
 	config Config
 }
 
+func (f factory) HTTPClient(mods ...func(cfg *goHttp.Transport)) *goHttp.Client {
+	t := f.config()
+
+	for _, m := range mods {
+		if m != nil {
+			m(t)
+		}
+	}
+
+	return &goHttp.Client{
+		Transport: t,
+	}
+}
+
 func (f factory) GetAuth() Auth {
 	return f.auth
 }
 
-func (f factory) AgencyConnection(hosts ...string) (driver.Connection, error) {
-	cfg, err := f.config()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg.Endpoints = hosts
-
-	conn, err := agency.NewAgencyConnection(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	if f.auth == nil {
-		return conn, nil
-	}
-	auth, err := f.auth()
-	if err != nil {
-		return nil, err
-	}
-	if auth == nil {
-		return conn, nil
-	}
-	return conn.SetAuthentication(auth)
-}
-
-func (f factory) Client(hosts ...string) (driver.Client, error) {
-	conn, err := f.Connection(hosts...)
-	if err != nil {
-		return nil, err
-	}
-
-	config := driver.ClientConfig{
-		Connection: conn,
-	}
-
-	if f.auth != nil {
-		auth, err := f.auth()
-		if err != nil {
-			return nil, err
-		}
-
-		if auth != nil {
-			config.Authentication = auth
-		}
-	}
-
-	return driver.NewClient(config)
-}
-
-func (f factory) Agency(hosts ...string) (agency.Agency, error) {
-	conn, err := f.AgencyConnection(hosts...)
-	if err != nil {
-		return nil, err
-	}
-
-	return agency.NewAgency(conn)
-}
-
 func (f factory) Connection(hosts ...string) (driver.Connection, error) {
-	cfg, err := f.config()
-	if err != nil {
-		return nil, err
-	}
+	transport := f.config()
 
-	cfg.Endpoints = hosts
+	cfg := http.ConnectionConfig{
+		Endpoints:          hosts,
+		Transport:          transport,
+		DontFollowRedirect: true,
+	}
 
 	conn, err := http.NewConnection(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	if f.auth == nil {
-		return conn, nil
-	}
-	auth, err := f.auth()
-	if err != nil {
-		return nil, err
-	}
-	if auth == nil {
-		return conn, nil
-	}
-	return conn.SetAuthentication(auth)
+	return WrapAuthentication(conn, f.auth), nil
 }

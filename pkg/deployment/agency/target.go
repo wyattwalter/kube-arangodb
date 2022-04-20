@@ -22,8 +22,31 @@ package agency
 
 type StateTarget struct {
 	HotBackup StateTargetHotBackup `json:"HotBackup,omitempty"`
+	ToDo      Jobs                 `json:"ToDo,omitempty"`
+	Pending   Jobs                 `json:"Pending,omitempty"`
+	Finished  Jobs                 `json:"Finished,omitempty"`
+	Failed    Jobs                 `json:"Failed,omitempty"`
 }
 
 type StateTargetHotBackup struct {
 	Create StateExists `json:"Create,omitempty"`
+}
+
+func (s StateTarget) GetJobStatus(i string) (JobStatus, Job) {
+	id := JobID(i)
+
+	if v, ok := s.ToDo[id]; ok {
+		return JobStatusToDo, v
+	}
+	if v, ok := s.Pending[id]; ok {
+		return JobStatusPending, v
+	}
+	if v, ok := s.Finished[id]; ok {
+		return JobStatusFinished, v
+	}
+	if v, ok := s.Failed[id]; ok {
+		return JobStatusFailed, v
+	}
+
+	return JobStatusUnknown, Job{}
 }

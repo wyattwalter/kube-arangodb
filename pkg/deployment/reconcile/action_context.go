@@ -28,17 +28,20 @@ import (
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/arangodb/arangosync-client/client"
-	"github.com/arangodb/go-driver/agency"
-
 	"time"
+
+	"github.com/arangodb/arangosync-client/client"
+
+	"net/http"
 
 	"github.com/arangodb/go-driver"
 	backupApi "github.com/arangodb/kube-arangodb/pkg/apis/backup/v1"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	agencyCache "github.com/arangodb/kube-arangodb/pkg/deployment/agency"
+	deploymentClient "github.com/arangodb/kube-arangodb/pkg/deployment/client"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/member"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
 	"github.com/arangodb/kube-arangodb/pkg/util/errors"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
 	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
@@ -61,7 +64,7 @@ type ActionContext interface {
 	reconciler.DeploymentModInterfaces
 	reconciler.DeploymentCachedStatus
 	reconciler.ArangoAgencyGet
-	reconciler.DeploymentInfoGetter
+	info.DeploymentInfoGetter
 	reconciler.DeploymentClient
 	reconciler.DeploymentSyncClient
 
@@ -145,6 +148,22 @@ type actionContext struct {
 	cachedStatus inspectorInterface.Inspector
 }
 
+func (ac *actionContext) GetHTTPClient(mods ...func(cfg *http.Transport)) deploymentClient.HTTPClient {
+	return ac.context.GetHTTPClient(mods...)
+}
+
+func (ac *actionContext) GetAgencySet() agencyCache.Set {
+	return ac.context.GetAgencySet()
+}
+
+func (ac *actionContext) GetMemberConnection(ctx context.Context, group api.ServerGroup, id string) (driver.Connection, error) {
+	return ac.context.GetMemberConnection(ctx, group, id)
+}
+
+func (ac *actionContext) GetMemberGroupConnection(ctx context.Context, group api.ServerGroup) (map[string]driver.Connection, error) {
+	return ac.context.GetMemberGroupConnection(ctx, group)
+}
+
 func (ac *actionContext) WithArangoMember(cache inspectorInterface.Inspector, timeout time.Duration, name string) reconciler.ArangoMemberModContext {
 	return ac.context.WithArangoMember(cache, timeout, name)
 }
@@ -163,10 +182,6 @@ func (ac *actionContext) UpdateStatus(ctx context.Context, status api.Deployment
 
 func (ac *actionContext) GetNamespace() string {
 	return ac.context.GetNamespace()
-}
-
-func (ac *actionContext) GetAgencyClientsWithPredicate(ctx context.Context, predicate func(id string) bool) ([]driver.Connection, error) {
-	return ac.context.GetAgencyClientsWithPredicate(ctx, predicate)
 }
 
 func (ac *actionContext) GetStatus() (api.DeploymentStatus, int32) {
@@ -305,24 +320,6 @@ func (ac *actionContext) GetServerClient(ctx context.Context, group api.ServerGr
 		return nil, errors.WithStack(err)
 	}
 	return c, nil
-}
-
-// GetAgencyClients returns a client connection for every agency member.
-func (ac *actionContext) GetAgencyClients(ctx context.Context) ([]driver.Connection, error) {
-	c, err := ac.context.GetAgencyClients(ctx)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
-}
-
-// GetAgency returns a connection to the entire agency.
-func (ac *actionContext) GetAgency(ctx context.Context) (agency.Agency, error) {
-	a, err := ac.context.GetAgency(ctx)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return a, nil
 }
 
 // GetSyncServerClient returns a cached client for a specific arangosync server.

@@ -153,7 +153,7 @@ func (ci *clusterScalingIntegration) inspectCluster(ctx context.Context, expectS
 
 	ctxChild, cancel := globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
 	defer cancel()
-	c, err := ci.depl.clientCache.GetDatabase(ctxChild)
+	c, err := ci.depl.GetDatabaseClient(ctxChild)
 	if err != nil {
 		return errors.WithStack(err)
 	}

@@ -24,40 +24,82 @@ import (
 	"context"
 	"sync"
 
-	"github.com/arangodb/go-driver/agency"
+	"github.com/arangodb/go-driver"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/client"
+	"github.com/pkg/errors"
 )
 
 type Cache interface {
-	Reload(ctx context.Context, client agency.Agency) (uint64, error)
+	Reload(ctx context.Context) (uint64, error)
 	Data() (State, bool)
+
+	AgentSet() Set
+
 	CommitIndex() uint64
 }
 
-func NewCache(mode *api.DeploymentMode) Cache {
+func NewCache(c client.Cache, mode *api.DeploymentMode) Cache {
 	if mode.Get() == api.DeploymentModeSingle {
 		return NewSingleCache()
 	}
 
-	return NewAgencyCache()
+	return NewAgencyCache(c)
 }
 
-func NewAgencyCache() Cache {
-	return &cache{}
+func NewAgencyCache(c client.Cache) Cache {
+	return &cache{
+		set: &agentSet{
+			cache:   c,
+			clients: map[string]driver.Connection{},
+			result:  nil,
+		},
+	}
 }
 
 func NewSingleCache() Cache {
 	return &cacheSingle{}
 }
 
+type cacheSingleSet struct {
+}
+
+func (c cacheSingleSet) SetMembers(status api.DeploymentStatus) error {
+	return nil
+}
+
+func (c cacheSingleSet) Health() Health {
+	return nil
+}
+
+func (c cacheSingleSet) Size() int {
+	return 0
+}
+
+func (c cacheSingleSet) Leader() (string, uint64, driver.Connection, bool) {
+	return "", 0, nil, false
+}
+
+func (c cacheSingleSet) Agent(id string) (driver.Connection, bool) {
+	return nil, false
+}
+
 type cacheSingle struct {
+}
+
+func (c cacheSingle) AgentSet() Set {
+	return cacheSingleSet{}
+}
+
+func (c cacheSingle) Leader() (string, bool) {
+	return "", true
 }
 
 func (c cacheSingle) CommitIndex() uint64 {
 	return 0
 }
 
-func (c cacheSingle) Reload(ctx context.Context, client agency.Agency) (uint64, error) {
+func (c cacheSingle) Reload(ctx context.Context) (uint64, error) {
 	return 0, nil
 }
 
@@ -73,9 +115,18 @@ type cache struct {
 	commitIndex uint64
 
 	data State
+
+	set *agentSet
+}
+
+func (c *cache) AgentSet() Set {
+	return c.set
 }
 
 func (c *cache) CommitIndex() uint64 {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	return c.commitIndex
 }
 
@@ -86,28 +137,32 @@ func (c *cache) Data() (State, bool) {
 	return c.data, c.valid
 }
 
-func (c *cache) Reload(ctx context.Context, client agency.Agency) (uint64, error) {
+func (c *cache) Reload(ctx context.Context) (uint64, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	cfg, err := getAgencyConfig(ctx, client)
-	if err != nil {
-		c.valid = false
+	if err := c.set.refresh(ctx); err != nil {
 		return 0, err
 	}
 
-	if cfg.CommitIndex == c.commitIndex && c.valid {
-		// We are on same index, nothing to do
-		return cfg.CommitIndex, err
+	_, commitIndex, conn, ok := c.set.Leader()
+
+	if !ok {
+		return 0, errors.New("Set did not refresh properly")
 	}
 
-	if data, err := loadState(ctx, client); err != nil {
+	if commitIndex == c.commitIndex && c.valid {
+		// We are on same index, nothing to do
+		return commitIndex, nil
+	}
+
+	if data, err := loadState(ctx, conn); err != nil {
 		c.valid = false
-		return cfg.CommitIndex, err
+		return commitIndex, err
 	} else {
 		c.data = data
 		c.valid = true
-		c.commitIndex = cfg.CommitIndex
-		return cfg.CommitIndex, nil
+		c.commitIndex = commitIndex
+		return commitIndex, nil
 	}
 }

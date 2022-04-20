@@ -144,6 +144,10 @@ type Deployment struct {
 	memberState memberState.StateInspector
 }
 
+func (d *Deployment) GetHTTPClient(mods ...func(cfg *http.Transport)) deploymentClient.HTTPClient {
+	return d.clientCache.GetHTTPClient(mods...)
+}
+
 func (d *Deployment) WithArangoMember(cache inspectorInterface.Inspector, timeout time.Duration, name string) reconciler.ArangoMemberModContext {
 	return reconciler.NewArangoMemberModContext(cache, timeout, name)
 }
@@ -168,11 +172,7 @@ func (d *Deployment) RefreshAgencyCache(ctx context.Context) (uint64, error) {
 	lCtx, c := globals.GetGlobalTimeouts().Agency().WithTimeout(ctx)
 	defer c()
 
-	a, err := d.GetAgency(lCtx)
-	if err != nil {
-		return 0, err
-	}
-	return d.agencyCache.Reload(lCtx, a)
+	return d.agencyCache.Reload(lCtx)
 }
 
 func (d *Deployment) SetAgencyMaintenanceMode(ctx context.Context, enabled bool) error {
@@ -243,13 +243,13 @@ func New(config Config, deps Dependencies, apiObject *api.ArangoDeployment) (*De
 		deps:         deps,
 		eventCh:      make(chan *deploymentEvent, deploymentEventQueueSize),
 		stopCh:       make(chan struct{}),
-		agencyCache:  agency.NewCache(apiObject.Spec.Mode),
 		currentState: inspector.NewInspector(newDeploymentThrottle(), deps.Client, apiObject.GetNamespace()),
 	}
 
 	d.memberState = memberState.NewStateInspector(d)
 
-	d.clientCache = deploymentClient.NewClientCache(d, conn.NewFactory(d.getAuth, d.getConnConfig))
+	d.clientCache = deploymentClient.NewClientCache(d, conn.NewFactory(d.getAuth, d.getConnTransport))
+	d.agencyCache = agency.NewCache(d.clientCache, apiObject.Spec.Mode)
 
 	d.status.last = *(apiObject.Status.DeepCopy())
 	d.reconciler = reconcile.NewReconciler(deps.Log, d)
@@ -323,6 +323,10 @@ func (d *Deployment) run() {
 	// Create agency mapping
 	if err := d.createAgencyMapping(context.TODO()); err != nil {
 		d.CreateEvent(k8sutil.NewErrorEvent("Failed to create agency mapping members", err, d.GetAPIObject()))
+	}
+
+	if err := d.agencyCache.AgentSet().SetMembers(d.GetStatusSnapshot()); err != nil {
+		d.CreateEvent(k8sutil.NewErrorEvent("Failed to create agency cache members", err, d.GetAPIObject()))
 	}
 
 	if d.GetPhase() == api.DeploymentPhaseNone {
@@ -634,7 +638,7 @@ func (d *Deployment) lookForServiceMonitorCRD() {
 func (d *Deployment) SetNumberOfServers(ctx context.Context, noCoordinators, noDBServers *int) error {
 	ctxChild, cancel := globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
 	defer cancel()
-	c, err := d.clientCache.GetDatabase(ctxChild)
+	c, err := d.GetDatabaseClient(ctxChild)
 	if err != nil {
 		return errors.WithStack(err)
 	}

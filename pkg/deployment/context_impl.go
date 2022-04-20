@@ -24,7 +24,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net"
-	nhttp "net/http"
+	goHttp "net/http"
 	"strconv"
 	"time"
 
@@ -38,13 +38,10 @@ import (
 	"github.com/arangodb/kube-arangodb/pkg/util/errors"
 	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
 
-	"github.com/arangodb/kube-arangodb/pkg/util/arangod/conn"
-
 	"github.com/arangodb/kube-arangodb/pkg/operator/scope"
 
 	"github.com/arangodb/kube-arangodb/pkg/deployment/features"
 
-	"github.com/arangodb/go-driver/http"
 	"github.com/arangodb/go-driver/jwt"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/pod"
 	"github.com/arangodb/kube-arangodb/pkg/util/constants"
@@ -54,10 +51,10 @@ import (
 	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/arangosync-client/tasks"
 	driver "github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	backupApi "github.com/arangodb/kube-arangodb/pkg/apis/backup/v1"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/apis/shared"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/agency"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/resources"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
@@ -180,59 +177,63 @@ func (d *Deployment) UpdateMember(ctx context.Context, member api.MemberStatus) 
 // GetDatabaseClient returns a cached client for the entire database (cluster coordinators or single server),
 // creating one if needed.
 func (d *Deployment) GetDatabaseClient(ctx context.Context) (driver.Client, error) {
-	c, err := d.clientCache.GetDatabase(ctx)
+	spec := d.GetSpec()
+
+	group := spec.Mode.ServingGroup()
+
+	members := d.GetStatusSnapshot().Members.AsListInGroup(group)
+
+	if servingMembers := members.Filter(func(a api.DeploymentStatusMemberElement) bool {
+		return a.Member.Conditions.IsTrue(api.ConditionTypeServing)
+	}); len(servingMembers) > 0 {
+		members = servingMembers
+	}
+
+	member, ok := members.Any()
+
+	if !ok {
+		return nil, errors.Newf("No member in serving phase")
+	}
+
+	if len(members) == 0 {
+		return nil, errors.Newf("No member in serving phase")
+	}
+
+	c, err := d.clientCache.GetConnection(group, member.Member.ID)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return c, nil
+
+	client, err := driver.NewClient(driver.ClientConfig{
+		Connection: c,
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return client, nil
 }
 
 // GetServerClient returns a cached client for a specific server.
 func (d *Deployment) GetServerClient(ctx context.Context, group api.ServerGroup, id string) (driver.Client, error) {
-	c, err := d.clientCache.Get(ctx, group, id)
+	c, err := d.clientCache.GetConnection(group, id)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return c, nil
-}
 
-// GetAuthentication return authentication for members
-func (d *Deployment) GetAuthentication() conn.Auth {
-	return d.clientCache.GetAuth()
-}
-
-// GetAgencyClients returns a client connection for every agency member.
-func (d *Deployment) GetAgencyClients(ctx context.Context) ([]driver.Connection, error) {
-	return d.GetAgencyClientsWithPredicate(ctx, nil)
-}
-
-// GetAgencyClientsWithPredicate returns a client connection for every agency member.
-// If the given predicate is not nil, only agents are included where the given predicate returns true.
-func (d *Deployment) GetAgencyClientsWithPredicate(ctx context.Context, predicate func(id string) bool) ([]driver.Connection, error) {
-	agencyMembers := d.status.last.Members.Agents
-	result := make([]driver.Connection, 0, len(agencyMembers))
-	for _, m := range agencyMembers {
-		if predicate != nil && !predicate(m.ID) {
-			continue
-		}
-		client, err := d.GetServerClient(ctx, api.ServerGroupAgents, m.ID)
-		if err != nil {
-			return nil, errors.WithStack(err)
-		}
-		conn := client.Connection()
-		result = append(result, conn)
+	client, err := driver.NewClient(driver.ClientConfig{
+		Connection: c,
+	})
+	if err != nil {
+		return nil, errors.WithStack(err)
 	}
-	return result, nil
+
+	return client, nil
 }
 
-// GetAgency returns a connection to the entire agency.
-func (d *Deployment) GetAgency(ctx context.Context) (agency.Agency, error) {
-	return d.clientCache.GetAgency(ctx)
-}
-
-func (d *Deployment) getConnConfig() (http.ConnectionConfig, error) {
-	transport := &nhttp.Transport{
-		Proxy: nhttp.ProxyFromEnvironment,
+func (d *Deployment) getConnTransport() *goHttp.Transport {
+	transport := &goHttp.Transport{
+		Proxy: goHttp.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 100 * time.Millisecond,
@@ -250,12 +251,7 @@ func (d *Deployment) getConnConfig() (http.ConnectionConfig, error) {
 		}
 	}
 
-	connConfig := http.ConnectionConfig{
-		Transport:          transport,
-		DontFollowRedirect: true,
-	}
-
-	return connConfig, nil
+	return transport
 }
 
 func (d *Deployment) getAuth() (driver.Authentication, error) {
@@ -545,20 +541,6 @@ func (d *Deployment) EnableScalingCluster(ctx context.Context) error {
 	return d.clusterScalingIntegration.EnableScalingCluster(ctx)
 }
 
-// GetAgencyPlan returns agency plan
-func (d *Deployment) GetAgencyData(ctx context.Context, i interface{}, keyParts ...string) error {
-	a, err := d.GetAgency(ctx)
-	if err != nil {
-		return err
-	}
-
-	if err = a.ReadKey(ctx, keyParts, i); err != nil {
-		return err
-	}
-
-	return err
-}
-
 func (d *Deployment) RenderPodForMember(ctx context.Context, cachedStatus inspectorInterface.Inspector, spec api.DeploymentSpec, status api.DeploymentStatus, memberID string, imageInfo api.ImageInfo) (*core.Pod, error) {
 	return d.resources.RenderPodForMember(ctx, cachedStatus, spec, status, memberID, imageInfo)
 }
@@ -701,4 +683,16 @@ func (d *Deployment) GetStatusSnapshot() api.DeploymentStatus {
 	z := s.DeepCopy()
 
 	return *z
+}
+
+func (d *Deployment) GetAgencySet() agency.Set {
+	return d.agencyCache.AgentSet()
+}
+
+func (d *Deployment) GetMemberConnection(ctx context.Context, group api.ServerGroup, id string) (driver.Connection, error) {
+	return d.clientCache.GetConnection(group, id)
+}
+
+func (d *Deployment) GetMemberGroupConnection(ctx context.Context, group api.ServerGroup) (map[string]driver.Connection, error) {
+	return d.clientCache.GetConnectionsForGroup(group)
 }

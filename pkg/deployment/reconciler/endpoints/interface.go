@@ -18,18 +18,11 @@
 // Copyright holder is ArangoDB GmbH, Cologne, Germany
 //
 
-package resilience
+package endpoints
 
-import (
-	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
-	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
-)
+import api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 
-// Context provides methods to the resilience package.
-type Context interface {
-	reconciler.ArangoAgency
-	reconciler.DeploymentDatabaseClient
-	reconciler.DeploymentStatusUpdate
-
-	info.DeploymentInfoGetter
+type DeploymentEndpoints interface {
+	// GenerateMemberEndpoint generates endpoint for a member
+	GenerateMemberEndpoint(group api.ServerGroup, member api.MemberStatus) (string, error)
 }

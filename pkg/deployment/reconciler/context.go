@@ -23,12 +23,15 @@ package reconciler
 import (
 	"context"
 
+	goHttp "net/http"
+
 	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	agencyCache "github.com/arangodb/kube-arangodb/pkg/deployment/agency"
+	deploymentClient "github.com/arangodb/kube-arangodb/pkg/deployment/client"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/patch"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/endpoints"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
 	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
 	persistentvolumeclaimv1 "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/persistentvolumeclaim/v1"
@@ -82,12 +85,7 @@ type DeploymentPodRenderer interface {
 	// RenderPodTemplateForMemberFromCurrent Renders PodTemplate definition for member
 	RenderPodTemplateForMemberFromCurrent(ctx context.Context, cachedStatus inspectorInterface.Inspector, memberID string) (*core.PodTemplateSpec, error)
 
-	DeploymentEndpoints
-}
-
-type DeploymentEndpoints interface {
-	// GenerateMemberEndpoint generates endpoint for a member
-	GenerateMemberEndpoint(group api.ServerGroup, member api.MemberStatus) (string, error)
+	endpoints.DeploymentEndpoints
 }
 
 type DeploymentImageManager interface {
@@ -122,6 +120,7 @@ type DeploymentCachedStatus interface {
 
 type ArangoAgencyGet interface {
 	GetAgencyCache() (agencyCache.State, bool)
+	GetAgencySet() agencyCache.Set
 }
 
 type ArangoAgency interface {
@@ -130,35 +129,9 @@ type ArangoAgency interface {
 	RefreshAgencyCache(ctx context.Context) (uint64, error)
 }
 
-type DeploymentInfoGetter interface {
-	// GetAPIObject returns the deployment as k8s object.
-	GetAPIObject() k8sutil.APIObject
-	// GetSpec returns the current specification of the deployment
-	GetSpec() api.DeploymentSpec
-	// GetStatus returns the current status of the deployment
-	GetStatus() (api.DeploymentStatus, int32)
-	// GetStatusSnapshot returns the current status of the deployment without revision
-	GetStatusSnapshot() api.DeploymentStatus
-	// GetMode the specified mode of deployment
-	GetMode() api.DeploymentMode
-	// GetName returns the name of the deployment
-	GetName() string
-	// GetNamespace returns the namespace that contains the deployment
-	GetNamespace() string
-}
-
 type ArangoApplier interface {
 	ApplyPatchOnPod(ctx context.Context, pod *core.Pod, p ...patch.Item) error
 	ApplyPatch(ctx context.Context, p ...patch.Item) error
-}
-
-type DeploymentAgencyClient interface {
-	// GetAgencyClients returns a client connection for every agency member.
-	GetAgencyClients(ctx context.Context) ([]driver.Connection, error)
-	// GetAgencyClientsWithPredicate returns a client connection for every agency member which match condition.
-	GetAgencyClientsWithPredicate(ctx context.Context, predicate func(id string) bool) ([]driver.Connection, error)
-	// GetAgency returns a connection to the entire agency.
-	GetAgency(ctx context.Context) (agency.Agency, error)
 }
 
 type DeploymentDatabaseClient interface {
@@ -170,6 +143,16 @@ type DeploymentDatabaseClient interface {
 type DeploymentMemberClient interface {
 	// GetServerClient returns a cached client for a specific server.
 	GetServerClient(ctx context.Context, group api.ServerGroup, id string) (driver.Client, error)
+}
+
+type DeploymentConnectionClient interface {
+	// GetMemberConnection returns a connection for a specific server.
+	GetMemberConnection(ctx context.Context, group api.ServerGroup, id string) (driver.Connection, error)
+	// GetMemberGroupConnection returns a connection for a all members in group.
+	GetMemberGroupConnection(ctx context.Context, group api.ServerGroup) (map[string]driver.Connection, error)
+
+	// GetHTTPClient returns native Go HTTP Client
+	GetHTTPClient(mods ...func(cfg *goHttp.Transport)) deploymentClient.HTTPClient
 }
 
 type DeploymentSyncClient interface {
@@ -184,7 +167,7 @@ type KubernetesEventGenerator interface {
 }
 
 type DeploymentClient interface {
-	DeploymentAgencyClient
+	DeploymentConnectionClient
 	DeploymentDatabaseClient
 	DeploymentMemberClient
 }

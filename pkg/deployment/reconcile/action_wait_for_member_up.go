@@ -22,15 +22,12 @@ package reconcile
 
 import (
 	"context"
-	"time"
 
 	"github.com/arangodb/kube-arangodb/pkg/util/globals"
 
 	"github.com/arangodb/kube-arangodb/pkg/util/errors"
 
 	driver "github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
-
 	"github.com/rs/zerolog"
 
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
@@ -87,12 +84,12 @@ func (a *actionWaitForMemberUp) CheckProgress(ctx context.Context) (bool, bool, 
 		return a.checkProgressSingle(ctxChild)
 	case api.DeploymentModeActiveFailover:
 		if a.action.Group == api.ServerGroupAgents {
-			return a.checkProgressAgent(ctxChild)
+			return a.checkProgressAgent()
 		}
 		return a.checkProgressSingleInActiveFailover(ctxChild)
 	default:
 		if a.action.Group == api.ServerGroupAgents {
-			return a.checkProgressAgent(ctxChild)
+			return a.checkProgressAgent()
 		}
 		return a.checkProgressCluster()
 	}
@@ -133,31 +130,19 @@ func (a *actionWaitForMemberUp) checkProgressSingleInActiveFailover(ctx context.
 
 // checkProgressAgent checks the progress of the action in the case
 // of an agent.
-func (a *actionWaitForMemberUp) checkProgressAgent(ctx context.Context) (bool, bool, error) {
+func (a *actionWaitForMemberUp) checkProgressAgent() (bool, bool, error) {
 	log := a.log
-	clients, err := a.actionCtx.GetAgencyClients(ctx)
-	if err != nil {
-		log.Debug().Err(err).Msg("Failed to create agency clients")
-		return false, false, nil
+
+	agencySet := a.actionCtx.GetAgencySet()
+
+	if agencySet.Size() == agencySet.Health().Healthy() {
+		log.Debug().Msg("Agency is happy")
+
+		return true, false, nil
 	}
 
-	for _, a := range clients {
-		a.Endpoints()
-	}
-
-	shortCtx, c := context.WithTimeout(ctx, 3*time.Second)
-	defer c()
-
-	shortCtx = agency.WithAllowDifferentLeaderEndpoints(shortCtx)
-
-	if err := agency.AreAgentsHealthy(shortCtx, clients); err != nil {
-		log.Debug().Err(err).Msg("Not all agents are ready")
-		return false, false, nil
-	}
-
-	log.Debug().Msg("Agency is happy")
-
-	return true, false, nil
+	log.Debug().Msg("Not all agents are ready")
+	return false, false, nil
 }
 
 // checkProgressCluster checks the progress of the action in the case

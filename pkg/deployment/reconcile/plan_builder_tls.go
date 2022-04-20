@@ -38,7 +38,6 @@ import (
 	"github.com/arangodb/kube-arangodb/pkg/util/constants"
 	inspectorInterface "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector"
 
-	"github.com/arangodb/go-driver"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/apis/shared"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/actions"
@@ -413,13 +412,10 @@ func checkServerValidCertRequest(ctx context.Context, context PlanBuilderContext
 	tlsConfig := &tls.Config{
 		RootCAs: ca.AsCertPool(),
 	}
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
-	client := &http.Client{Transport: transport, Timeout: time.Second}
 
-	auth, err := context.GetAuthentication()()
-	if err != nil {
-		return nil, err
-	}
+	client := context.GetHTTPClient(func(cfg *http.Transport) {
+		cfg.TLSClientConfig = tlsConfig
+	})
 
 	req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -427,12 +423,6 @@ func checkServerValidCertRequest(ctx context.Context, context PlanBuilderContext
 	}
 
 	req = req.WithContext(ctx)
-
-	if auth != nil && auth.Type() == driver.AuthenticationTypeRaw {
-		if h := auth.Get("value"); h != "" {
-			req.Header.Add("Authorization", h)
-		}
-	}
 
 	resp, err := client.Do(req)
 	if err != nil {

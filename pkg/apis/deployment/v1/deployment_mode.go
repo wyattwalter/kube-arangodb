@@ -47,6 +47,17 @@ func (m DeploymentMode) Validate() error {
 	}
 }
 
+func (m *DeploymentMode) ServingGroup() ServerGroup {
+	switch m.Get() {
+	case DeploymentModeSingle, DeploymentModeActiveFailover:
+		return ServerGroupSingle
+	case DeploymentModeCluster:
+		return ServerGroupCoordinators
+	default:
+		return ServerGroupUnknown
+	}
+}
+
 // Get mode or default value
 func (m *DeploymentMode) Get() DeploymentMode {
 	if m == nil {

@@ -71,7 +71,8 @@ func Test_Config_Unmarshal(t *testing.T) {
 
 	require.NoError(t, json.Unmarshal([]byte(data), &cfg))
 
-	require.Equal(t, "AGNT-fd0f4fc7-b60b-44bb-9f5e-5fc91f708f82", cfg.LeaderId)
+	require.NotNil(t, cfg.LeaderId)
+	require.Equal(t, "AGNT-fd0f4fc7-b60b-44bb-9f5e-5fc91f708f82", *cfg.LeaderId)
 	require.Equal(t, uint64(94), cfg.CommitIndex)
 	require.Equal(t, "AGNT-fd0f4fc7-b60b-44bb-9f5e-5fc91f708f82", cfg.Configuration.ID)
 }

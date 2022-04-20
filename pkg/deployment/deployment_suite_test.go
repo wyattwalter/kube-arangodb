@@ -489,7 +489,7 @@ func createTestDeployment(t *testing.T, config Config, arangoDeployment *api.Ara
 		stopCh:       make(chan struct{}),
 		currentState: inspector.NewInspector(throttle.NewAlwaysThrottleComponents(), deps.Client, arangoDeployment.GetNamespace()),
 	}
-	d.clientCache = client.NewClientCache(d, conn.NewFactory(d.getAuth, d.getConnConfig))
+	d.clientCache = client.NewClientCache(d, conn.NewFactory(d.getAuth, d.getConnTransport))
 
 	require.NoError(t, d.currentState.Refresh(context.Background()))
 

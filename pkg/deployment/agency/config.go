@@ -25,14 +25,54 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"sync"
+
 	"github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 )
 
-func getAgencyConfig(ctx context.Context, client agency.Agency) (*agencyConfig, error) {
-	conn := client.Connection()
+type agencyConfigResults map[string]*agencyConfigResult
 
-	req, err := client.Connection().NewRequest(http.MethodGet, "/_api/agency/config")
+type agencyConfigResult struct {
+	config *agencyConfig
+	err    error
+	conn   driver.Connection
+}
+
+func getAgencyConfigResults(ctx context.Context, connections map[string]driver.Connection) agencyConfigResults {
+	var wg sync.WaitGroup
+
+	r := make(agencyConfigResults, len(connections))
+
+	for k := range connections {
+		r[k] = nil
+	}
+
+	for k := range connections {
+		wg.Add(1)
+
+		go func(key string) {
+			defer wg.Done()
+
+			r[key] = getAgencyConfigResult(ctx, connections[key])
+		}(k)
+	}
+
+	wg.Wait()
+
+	return r
+}
+
+func getAgencyConfigResult(ctx context.Context, conn driver.Connection) *agencyConfigResult {
+	c, err := getAgencyConfig(ctx, conn)
+	return &agencyConfigResult{
+		config: c,
+		err:    err,
+		conn:   conn,
+	}
+}
+
+func getAgencyConfig(ctx context.Context, conn driver.Connection) (*agencyConfig, error) {
+	req, err := conn.NewRequest(http.MethodGet, "/_api/agency/config")
 	if err != nil {
 		return nil, err
 	}
@@ -58,11 +98,14 @@ func getAgencyConfig(ctx context.Context, client agency.Agency) (*agencyConfig, 
 }
 
 type agencyConfig struct {
-	LeaderId string `json:"leaderId"`
+	LeaderId *string `json:"leaderId,omitempty"`
 
 	CommitIndex uint64 `json:"commitIndex"`
 
 	Configuration struct {
 		ID string `json:"id"`
 	} `json:"configuration"`
+
+	Pool   map[string]interface{} `json:"pool,omitempty"`
+	Active []string               `json:"active,omitempty"`
 }

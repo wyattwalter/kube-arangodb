@@ -21,34 +21,109 @@
 package client
 
 import (
-	"context"
 	"net"
 	"strconv"
 	"sync"
 
+	goHttp "net/http"
+
 	driver "github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/apis/shared"
-	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/endpoints"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
 	"github.com/arangodb/kube-arangodb/pkg/util/arangod/conn"
-	"github.com/arangodb/kube-arangodb/pkg/util/errors"
-	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
+	"k8s.io/apimachinery/pkg/util/rand"
 )
 
+type Connections map[string]driver.Connection
+
+func (c Connections) Keys() []string {
+	z := make([]string, 0, len(c))
+
+	for k := range c {
+		z = append(z, k)
+	}
+
+	return z
+}
+func (c Connections) Filter(p func(c driver.Connection) bool) Connections {
+	f := make(map[string]bool, len(c))
+
+	var wg sync.WaitGroup
+
+	for id := range c {
+		wg.Add(1)
+		go func(i string) {
+			defer wg.Done()
+
+			f[i] = p(c[i])
+		}(id)
+	}
+
+	wg.Wait()
+
+	r := make(Connections, len(f))
+
+	for id := range f {
+		if f[id] {
+			r[id] = c[id]
+		}
+	}
+
+	return r
+}
+
+func (c Connections) Random() (driver.Connection, bool) {
+	keys := c.Keys()
+
+	if len(keys) == 0 {
+		return nil, false
+	}
+
+	return c[keys[rand.Intn(len(keys))]], true
+}
+
+type HTTPClient interface {
+	Do(req *goHttp.Request) (*goHttp.Response, error)
+}
+
+type httpClient struct {
+	client *goHttp.Client
+	cache  *cache
+}
+
+func (h httpClient) Do(req *goHttp.Request) (*goHttp.Response, error) {
+	auth := h.cache.factory.GetAuth()
+
+	if auth != nil {
+		a, err := auth()
+		if err != nil {
+			return nil, err
+		}
+
+		if a.Type() == driver.AuthenticationTypeRaw {
+			if v := a.Get("value"); v != "" {
+				req.Header.Add("Authorization", v)
+			}
+		}
+	}
+
+	return h.client.Do(req)
+}
+
 type Cache interface {
-	GetAuth() conn.Auth
+	Connection(hosts ...string) (driver.Connection, error)
 
-	Connection(ctx context.Context, host string) (driver.Connection, error)
+	GetHTTPClient(mods ...func(cfg *goHttp.Transport)) HTTPClient
 
-	Get(ctx context.Context, group api.ServerGroup, id string) (driver.Client, error)
-	GetDatabase(ctx context.Context) (driver.Client, error)
-	GetAgency(ctx context.Context) (agency.Agency, error)
+	GetConnection(group api.ServerGroup, id string) (driver.Connection, error)
+	GetConnectionsForGroup(group api.ServerGroup) (Connections, error)
 }
 
 type CacheGen interface {
-	reconciler.DeploymentEndpoints
-	reconciler.DeploymentInfoGetter
+	endpoints.DeploymentEndpoints
+	info.DeploymentInfoGetter
 }
 
 func NewClientCache(in CacheGen, factory conn.Factory) Cache {
@@ -65,20 +140,30 @@ type cache struct {
 	factory conn.Factory
 }
 
-func (cc *cache) Connection(ctx context.Context, host string) (driver.Connection, error) {
-	return cc.factory.Connection(host)
+func (cc *cache) GetHTTPClient(mods ...func(cfg *goHttp.Transport)) HTTPClient {
+	return httpClient{
+		client: cc.factory.HTTPClient(mods...),
+		cache:  cc,
+	}
 }
 
-func (cc *cache) extendHost(host string) string {
-	scheme := "http"
-	if cc.in.GetSpec().TLS.IsSecure() {
-		scheme = "https"
+func (cc *cache) GetConnectionsForGroup(group api.ServerGroup) (Connections, error) {
+	q := cc.in.GetStatusSnapshot().Members.AsListInGroup(group)
+
+	r := make(Connections, len(q))
+	for _, m := range q {
+		c, err := cc.GetConnection(group, m.Member.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		r[m.Member.ID] = c
 	}
 
-	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(shared.ArangoPort))
+	return r, nil
 }
 
-func (cc *cache) getClient(group api.ServerGroup, id string) (driver.Client, error) {
+func (cc *cache) GetConnection(group api.ServerGroup, id string) (driver.Connection, error) {
 	cc.mutex.Lock()
 	defer cc.mutex.Unlock()
 	m, _, _ := cc.in.GetStatusSnapshot().Members.ElementByID(id)
@@ -88,85 +173,18 @@ func (cc *cache) getClient(group api.ServerGroup, id string) (driver.Client, err
 		return nil, err
 	}
 
-	c, err := cc.factory.Client(cc.extendHost(m.GetEndpoint(endpoint)))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
+	return cc.factory.Connection(cc.extendHost(m.GetEndpoint(endpoint)))
 }
 
-// Get a cached client for the given ID in the given group, creating one
-// if needed.
-func (cc *cache) Get(ctx context.Context, group api.ServerGroup, id string) (driver.Client, error) {
-	client, err := cc.getClient(group, id)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	if _, err := client.Version(ctx); err == nil {
-		return client, nil
-	} else if driver.IsUnauthorized(err) {
-		return cc.getClient(group, id)
-	} else {
-		return client, nil
-	}
+func (cc *cache) Connection(hosts ...string) (driver.Connection, error) {
+	return cc.factory.Connection(hosts...)
 }
 
-func (cc *cache) GetAuth() conn.Auth {
-	return cc.factory.GetAuth()
-}
-
-func (cc *cache) getDatabaseClient() (driver.Client, error) {
-	cc.mutex.Lock()
-	defer cc.mutex.Unlock()
-
-	c, err := cc.factory.Client(cc.extendHost(k8sutil.CreateDatabaseClientServiceDNSName(cc.in.GetAPIObject())))
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
-}
-
-// GetDatabase returns a cached client for the entire database (cluster coordinators or single server),
-// creating one if needed.
-func (cc *cache) GetDatabase(ctx context.Context) (driver.Client, error) {
-	client, err := cc.getDatabaseClient()
-	if err != nil {
-		return nil, errors.WithStack(err)
+func (cc *cache) extendHost(host string) string {
+	scheme := "http"
+	if cc.in.GetSpec().TLS.IsSecure() {
+		scheme = "https"
 	}
 
-	if _, err := client.Version(ctx); err == nil {
-		return client, nil
-	} else if driver.IsUnauthorized(err) {
-		return cc.getDatabaseClient()
-	} else {
-		return client, nil
-	}
-}
-
-// GetAgency returns a cached client for the agency
-func (cc *cache) GetAgency(ctx context.Context) (agency.Agency, error) {
-	cc.mutex.Lock()
-	defer cc.mutex.Unlock()
-
-	// Not found, create a new client
-	var dnsNames []string
-	for _, m := range cc.in.GetStatusSnapshot().Members.Agents {
-		endpoint, err := cc.in.GenerateMemberEndpoint(api.ServerGroupAgents, m)
-		if err != nil {
-			return nil, err
-		}
-
-		dnsNames = append(dnsNames, cc.extendHost(m.GetEndpoint(endpoint)))
-	}
-
-	if len(dnsNames) == 0 {
-		return nil, errors.Newf("There is no DNS Name")
-	}
-
-	c, err := cc.factory.Agency(dnsNames...)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return c, nil
+	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(shared.ArangoPort))
 }

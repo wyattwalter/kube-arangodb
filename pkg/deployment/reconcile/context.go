@@ -30,7 +30,7 @@ import (
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/member"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
-	"github.com/arangodb/kube-arangodb/pkg/util/arangod/conn"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
 )
 
 type CreateMemberMod func(s *api.DeploymentStatus, g api.ServerGroup, m *api.MemberStatus) error
@@ -46,7 +46,7 @@ type Context interface {
 	reconciler.DeploymentCachedStatus
 	reconciler.ArangoAgencyGet
 	reconciler.ArangoApplier
-	reconciler.DeploymentInfoGetter
+	info.DeploymentInfoGetter
 	reconciler.DeploymentClient
 	reconciler.KubernetesEventGenerator
 	reconciler.DeploymentSyncClient
@@ -88,6 +88,4 @@ type Context interface {
 	EnableScalingCluster(ctx context.Context) error
 	// GetBackup receives information about a backup resource
 	GetBackup(ctx context.Context, backup string) (*backupApi.ArangoBackup, error)
-	// GetAuthentication return authentication for members
-	GetAuthentication() conn.Auth
 }

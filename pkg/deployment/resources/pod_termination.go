@@ -22,7 +22,6 @@ package resources
 
 import (
 	"context"
-	"time"
 
 	"github.com/arangodb/kube-arangodb/pkg/util/globals"
 
@@ -32,10 +31,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	driver "github.com/arangodb/go-driver"
-	"github.com/arangodb/go-driver/agency"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/apis/shared"
-	"github.com/arangodb/kube-arangodb/pkg/util/arangod"
+	agencyCache "github.com/arangodb/kube-arangodb/pkg/deployment/agency"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
 	v1 "k8s.io/api/core/v1"
 )
@@ -89,20 +87,15 @@ func (r *Resources) prepareAgencyPodTermination(ctx context.Context, log zerolog
 
 	// Inspect agency state
 	log.Debug().Msg("Agent data will be gone, so we will check agency serving status first")
-	ctxChild, cancel = context.WithTimeout(ctx, time.Second*15)
-	defer cancel()
-	ctxLeader := agency.WithAllowNoLeader(ctxChild) // The ID we're checking may be the leader, so ignore situations where all other agents are followers
 
-	agencyConns, err := r.context.GetAgencyClientsWithPredicate(ctxLeader, func(id string) bool { return id != memberStatus.ID })
-	if err != nil {
-		log.Debug().Err(err).Msg("Failed to create member client")
-		return errors.WithStack(err)
-	}
-	if len(agencyConns) == 0 {
+	agency := r.context.GetAgencySet()
+
+	if agency.Health().Healthy() == 0 {
 		log.Debug().Err(err).Msg("No more remaining agents, we cannot delete this one")
 		return errors.WithStack(errors.Newf("No more remaining agents"))
 	}
-	if err := agency.AreAgentsHealthy(ctxLeader, agencyConns); err != nil {
+
+	if agency.Health().Healthy(memberStatus.ID) < agency.Size()-1 {
 		log.Debug().Err(err).Msg("Remaining agents are not healthy")
 		return errors.WithStack(err)
 	}
@@ -262,54 +255,18 @@ func (r *Resources) prepareDBServerPodTermination(ctx context.Context, log zerol
 		}
 	} else if memberStatus.Phase == api.MemberPhaseDrain {
 		// Check the job progress
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		agency, err := r.context.GetAgency(ctxChild)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to create agency client")
-			return errors.WithStack(err)
-		}
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		jobStatus, err := arangod.CleanoutServerJobStatus(ctxChild, memberStatus.CleanoutJobID, c, agency)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to fetch job status")
-			return errors.WithStack(err)
-		}
-		if jobStatus.IsFailed() {
-			log.Warn().Str("reason", jobStatus.Reason()).Msg("Job failed")
-			// Revert cleanout state
-			memberStatus.Phase = api.MemberPhaseCreated
-			memberStatus.CleanoutJobID = ""
-			if err := updateMember(memberStatus); err != nil {
-				return errors.WithStack(err)
-			}
-			log.Error().Msg("Cleanout/Resign server job failed, continue anyway")
-			return nil
-		}
-		if jobStatus.IsFinished() {
-			memberStatus.CleanoutJobID = ""
-			memberStatus.Phase = api.MemberPhaseCreated
-		}
-	} else if memberStatus.Phase == api.MemberPhaseResign {
-		// Check the job progress
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		agency, err := r.context.GetAgency(ctxChild)
-		if err != nil {
+		cache, ok := r.context.GetAgencyCache()
+		if !ok {
+			err := errors.Newf("AgencyCache is not present")
 			log.Debug().Err(err).Msg("Failed to create agency client")
 			return errors.WithStack(err)
 		}
 
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		jobStatus, err := arangod.CleanoutServerJobStatus(ctxChild, memberStatus.CleanoutJobID, c, agency)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to fetch job status")
-			return errors.WithStack(err)
-		}
-		if jobStatus.IsFailed() {
-			log.Warn().Str("reason", jobStatus.Reason()).Msg("Resign Job failed")
+		jobStatus, jobDetails := cache.Target.GetJobStatus(memberStatus.CleanoutJobID)
+
+		switch jobStatus {
+		case agencyCache.JobStatusFailed:
+			log.Warn().Str("reason", jobDetails.Reason).Msg("Job failed")
 			// Revert cleanout state
 			memberStatus.Phase = api.MemberPhaseCreated
 			memberStatus.CleanoutJobID = ""
@@ -318,9 +275,32 @@ func (r *Resources) prepareDBServerPodTermination(ctx context.Context, log zerol
 			}
 			log.Error().Msg("Cleanout/Resign server job failed, continue anyway")
 			return nil
+		case agencyCache.JobStatusFinished:
+			memberStatus.CleanoutJobID = ""
+			memberStatus.Phase = api.MemberPhaseCreated
 		}
-		if jobStatus.IsFinished() {
-			log.Debug().Str("reason", jobStatus.Reason()).Msg("Resign Job finished")
+	} else if memberStatus.Phase == api.MemberPhaseResign {
+		cache, ok := r.context.GetAgencyCache()
+		if !ok {
+			err := errors.Newf("AgencyCache is not present")
+			log.Debug().Err(err).Msg("Failed to create agency client")
+			return errors.WithStack(err)
+		}
+
+		jobStatus, jobDetails := cache.Target.GetJobStatus(memberStatus.CleanoutJobID)
+		switch jobStatus {
+		case agencyCache.JobStatusFailed:
+			log.Warn().Str("reason", jobDetails.Reason).Msg("Resign Job failed")
+			// Revert cleanout state
+			memberStatus.Phase = api.MemberPhaseCreated
+			memberStatus.CleanoutJobID = ""
+			if err := updateMember(memberStatus); err != nil {
+				return errors.WithStack(err)
+			}
+			log.Error().Msg("Cleanout/Resign server job failed, continue anyway")
+			return nil
+		case agencyCache.JobStatusFinished:
+			log.Debug().Str("reason", jobDetails.Reason).Msg("Resign Job finished")
 			memberStatus.CleanoutJobID = ""
 			memberStatus.Phase = api.MemberPhaseCreated
 			if err := updateMember(memberStatus); err != nil {

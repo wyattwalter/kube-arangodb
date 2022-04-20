@@ -31,7 +31,7 @@ import (
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/rs/zerolog"
 
-	"github.com/arangodb/kube-arangodb/pkg/util/arangod"
+	agencyCache "github.com/arangodb/kube-arangodb/pkg/deployment/agency"
 )
 
 func init() {
@@ -149,31 +149,20 @@ func (a *actionCleanoutMember) CheckProgress(ctx context.Context) (bool, bool, e
 		// We're not done yet, check job status
 		log.Debug().Msg("IsCleanedOut returned false")
 
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		c, err := a.actionCtx.GetDatabaseClient(ctxChild)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to create database client")
+		if m.CleanoutJobID == "" {
+			return false, true, nil
+		}
+
+		cache, ok := a.actionCtx.GetAgencyCache()
+		if !ok {
+			log.Debug().Msg("AgencyCache is not present")
 			return false, false, nil
 		}
 
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		agency, err := a.actionCtx.GetAgency(ctxChild)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to create agency client")
-			return false, false, nil
-		}
+		jobStatus, jobDetails := cache.Target.GetJobStatus(m.CleanoutJobID)
 
-		ctxChild, cancel = globals.GetGlobalTimeouts().ArangoD().WithTimeout(ctx)
-		defer cancel()
-		jobStatus, err := arangod.CleanoutServerJobStatus(ctxChild, m.CleanoutJobID, c, agency)
-		if err != nil {
-			log.Debug().Err(err).Msg("Failed to fetch cleanout job status")
-			return false, false, nil
-		}
-		if jobStatus.IsFailed() {
-			log.Warn().Str("reason", jobStatus.Reason()).Msg("Cleanout Job failed. Aborting plan")
+		if jobStatus == agencyCache.JobStatusFailed {
+			log.Warn().Str("reason", jobDetails.Reason).Msg("Cleanout Job failed. Aborting plan")
 			// Revert cleanout state
 			m.Phase = api.MemberPhaseCreated
 			m.CleanoutJobID = ""

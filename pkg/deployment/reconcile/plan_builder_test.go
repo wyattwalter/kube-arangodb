@@ -41,11 +41,14 @@ import (
 
 	"time"
 
+	"net/http"
+
 	"github.com/arangodb/go-driver"
 	backupApi "github.com/arangodb/kube-arangodb/pkg/apis/backup/v1"
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/actions"
 	agencyCache "github.com/arangodb/kube-arangodb/pkg/deployment/agency"
+	deploymentClient "github.com/arangodb/kube-arangodb/pkg/deployment/client"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/member"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/patch"
 	pod2 "github.com/arangodb/kube-arangodb/pkg/deployment/pod"
@@ -83,6 +86,26 @@ type testContext struct {
 	RecordedEvent    *k8sutil.Event
 
 	Inspector inspectorInterface.Inspector
+}
+
+func (c *testContext) GetAgencySet() agencyCache.Set {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *testContext) GetMemberConnection(ctx context.Context, group api.ServerGroup, id string) (driver.Connection, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *testContext) GetMemberGroupConnection(ctx context.Context, group api.ServerGroup) (map[string]driver.Connection, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *testContext) GetHTTPClient(mods ...func(cfg *http.Transport)) deploymentClient.HTTPClient {
+	//TODO implement me
+	panic("implement me")
 }
 
 func (c *testContext) WithArangoMember(cache inspectorInterface.Inspector, timeout time.Duration, name string) reconciler.ArangoMemberModContext {

@@ -23,18 +23,17 @@ package reconcile
 import (
 	"context"
 
-	"github.com/arangodb/kube-arangodb/pkg/util/arangod/conn"
-
 	backupApi "github.com/arangodb/kube-arangodb/pkg/apis/backup/v1"
 
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
 	core "k8s.io/api/core/v1"
 )
 
 // PlanBuilderContext contains context methods provided to plan builders.
 type PlanBuilderContext interface {
-	reconciler.DeploymentInfoGetter
+	info.DeploymentInfoGetter
 	reconciler.DeploymentAgencyMaintenance
 	reconciler.ArangoMemberContext
 	reconciler.DeploymentPodRenderer
@@ -50,8 +49,6 @@ type PlanBuilderContext interface {
 	GetTLSKeyfile(group api.ServerGroup, member api.MemberStatus) (string, error)
 	// GetPvc gets a PVC by the given name, in the samespace of the deployment.
 	GetPvc(ctx context.Context, pvcName string) (*core.PersistentVolumeClaim, error)
-	// GetAuthentication return authentication for members
-	GetAuthentication() conn.Auth
 	// GetBackup receives information about a backup resource
 	GetBackup(ctx context.Context, backup string) (*backupApi.ArangoBackup, error)
 }

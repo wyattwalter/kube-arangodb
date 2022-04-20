@@ -19,3 +19,21 @@
 //
 
 package agency
+
+type JobStatus int
+
+const (
+	JobStatusUnknown JobStatus = iota
+	JobStatusToDo
+	JobStatusPending
+	JobStatusFinished
+	JobStatusFailed
+)
+
+type JobID string
+
+type Job struct {
+	Reason string `json:"reason,omitempty"`
+}
+
+type Jobs map[JobID]Job

@@ -30,6 +30,7 @@ import (
 	api "github.com/arangodb/kube-arangodb/pkg/apis/deployment/v1"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/member"
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler"
+	"github.com/arangodb/kube-arangodb/pkg/deployment/reconciler/info"
 	"github.com/arangodb/kube-arangodb/pkg/operator/scope"
 	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil"
 )
@@ -45,7 +46,7 @@ type Context interface {
 	reconciler.DeploymentCachedStatus
 	reconciler.ArangoAgency
 	reconciler.ArangoApplier
-	reconciler.DeploymentInfoGetter
+	info.DeploymentInfoGetter
 	reconciler.DeploymentClient
 	reconciler.DeploymentSyncClient
 	reconciler.KubernetesEventGenerator
