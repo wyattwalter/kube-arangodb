@@ -30,8 +30,9 @@ import (
 
 	"github.com/arangodb/kube-arangodb/pkg/util/globals"
 
-	"github.com/arangodb/kube-arangodb/pkg/deployment/patch"
 	"k8s.io/apimachinery/pkg/types"
+
+	"github.com/arangodb/kube-arangodb/pkg/deployment/patch"
 
 	"github.com/arangodb/kube-arangodb/pkg/deployment/reconcile"
 
@@ -51,6 +52,10 @@ import (
 
 	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"github.com/rs/zerolog/log"
+	core "k8s.io/api/core/v1"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/arangosync-client/tasks"
 	driver "github.com/arangodb/go-driver"
@@ -69,9 +74,6 @@ import (
 	serviceaccountv1 "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/serviceaccount/v1"
 	servicemonitorv1 "github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/servicemonitor/v1"
 	"github.com/arangodb/kube-arangodb/pkg/util/kclient"
-	"github.com/rs/zerolog/log"
-	core "k8s.io/api/core/v1"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var _ resources.Context = &Deployment{}
@@ -233,9 +235,9 @@ func (d *Deployment) GetAgencyClientsWithPredicate(ctx context.Context, predicat
 	return result, nil
 }
 
-// GetAgency returns a connection to the entire agency.
-func (d *Deployment) GetAgency(ctx context.Context) (agency.Agency, error) {
-	return d.clientCache.GetAgency(ctx)
+// GetAgency returns a connection to the agency.
+func (d *Deployment) GetAgency(ctx context.Context, agencyIDs ...string) (agency.Agency, error) {
+	return d.clientCache.GetAgency(ctx, agencyIDs...)
 }
 
 func (d *Deployment) getConnConfig() (http.ConnectionConfig, error) {

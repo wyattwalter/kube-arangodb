@@ -22,6 +22,7 @@ package reconcile
 
 import (
 	"context"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -30,8 +31,6 @@ import (
 
 	"github.com/arangodb/arangosync-client/client"
 	"github.com/arangodb/go-driver/agency"
-
-	"time"
 
 	"github.com/arangodb/go-driver"
 	backupApi "github.com/arangodb/kube-arangodb/pkg/apis/backup/v1"
@@ -342,9 +341,9 @@ func (ac *actionContext) GetAgencyClients(ctx context.Context) ([]driver.Connect
 	return c, nil
 }
 
-// GetAgency returns a connection to the entire agency.
-func (ac *actionContext) GetAgency(ctx context.Context) (agency.Agency, error) {
-	a, err := ac.context.GetAgency(ctx)
+// GetAgency returns a connection to the agency.
+func (ac *actionContext) GetAgency(ctx context.Context, agencyIDs ...string) (agency.Agency, error) {
+	a, err := ac.context.GetAgency(ctx, agencyIDs...)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
