@@ -19,6 +19,7 @@ rules:
       resourceNames:
         - "arangoclustersynchronizations.database.arangodb.com"
         - "arangotasks.database.arangodb.com"
+        - "arangojobs.apps.arangodb.com"
 
 {{- end }}
 {{- end }}
