@@ -21,8 +21,9 @@
 package v1beta1
 
 import (
-	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/gvk"
 	policy "k8s.io/api/policy/v1beta1"
+
+	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/gvk"
 )
 
 type Inspector interface {

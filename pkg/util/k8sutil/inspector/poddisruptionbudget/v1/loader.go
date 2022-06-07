@@ -18,11 +18,12 @@
 // Copyright holder is ArangoDB GmbH, Cologne, Germany
 //
 
-package v1beta1
+package v1
 
 import (
-	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/gvk"
 	policy "k8s.io/api/policy/v1"
+
+	"github.com/arangodb/kube-arangodb/pkg/util/k8sutil/inspector/gvk"
 )
 
 type Inspector interface {
